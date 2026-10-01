@@ -1,4 +1,4 @@
-# QUANTUM SHUTDOWN · 智能关机控制台
+﻿# QUANTUM SHUTDOWN · 智能关机控制台
 
 <p align="center">
   <img src="assets/screenshot.png" alt="界面预览" width="720"/>
@@ -25,7 +25,7 @@
 ### 方式二：从源码构建
 
 ```powershell
-git clone https://github.com/REPLACE_WITH_YOUR_ACCOUNT/quantum-shutdown.git
+git clone https://github.com/Hu1Y1XR/quantum-shutdown.git
 cd quantum-shutdown\src
 powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1
 ```
