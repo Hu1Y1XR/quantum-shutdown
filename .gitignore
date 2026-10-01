@@ -1,0 +1,15 @@
+# 构建产物
+*.exe
+*.zip
+*.bak
+
+# 自测输出
+selftest_result.txt
+_shot*.png
+_pkg/
+
+# VS / Rider 临时文件
+bin/
+obj/
+.vs/
+.idea/
