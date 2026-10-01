@@ -1,5 +1,5 @@
 ﻿// ============================================================
-//  QUANTUM SHUTDOWN · 智能关机控制台 v2.1
+//  QUANTUM SHUTDOWN · 智能关机控制台 v2.1.1
 //  纯 C# WPF 单文件实现，csc.exe 直接编译为独立 exe
 //  功能：倒计时关机 / 定时关机 / 一键取消（shutdown /a）
 //  自测：智能关机控制台.exe --selftest  /  --shots（附截图）
@@ -372,7 +372,7 @@ namespace QuantumShutdown
                          Foreground=""#AFC8EA"" VerticalAlignment=""Center""/>
               <Border Margin=""10,0,0,0"" CornerRadius=""4"" Background=""#0D1B33"" BorderBrush=""#24406E""
                       BorderThickness=""1"" Padding=""7,1"" VerticalAlignment=""Center"">
-                <TextBlock Text=""v2.1"" FontSize=""9.5"" Foreground=""#C2D2EC""/>
+                <TextBlock Text=""v2.1.1"" FontSize=""9.5"" Foreground=""#C2D2EC""/>
               </Border>
             </StackPanel>
           </DockPanel>
@@ -513,7 +513,7 @@ namespace QuantumShutdown
                   <StackPanel Orientation=""Horizontal"">
                     <StackPanel x:Name=""SchedSteps"" Orientation=""Horizontal"" VerticalAlignment=""Center""/>
                     <StackPanel Margin=""14,0,0,0"" VerticalAlignment=""Center"">
-                      <TextBlock Text=""点击 ▲▼ 或直接输入 · 00-23 : 00-59"" FontSize=""11"" Foreground=""#C2D2EC""/>
+                      <TextBlock Text=""点击 ▲▼ 或直接输入（小时 00-23，分钟 00-59）"" FontSize=""11"" Foreground=""#C2D2EC""/>
                       <TextBlock Margin=""0,3,0,0"" Text=""早于当前时刻则视为次日执行"" FontSize=""10.5"" Foreground=""#98ADD3""/>
                     </StackPanel>
                   </StackPanel>
@@ -897,29 +897,19 @@ namespace QuantumShutdown
 
         private void AddCountdownRow(StackPanel panel, TimeStepper[] steppers, string[] labels)
         {
+            // 版式：（数值）时（数值）分（数值）秒 —— 单位跟在输入框后面
             for (int i = 0; i < steppers.Length; i++)
             {
-                if (i > 0)
-                {
-                    panel.Children.Add(new TextBlock
-                    {
-                        Text = labels[i],
-                        FontSize = 12,
-                        Foreground = TimeStepper.Brush("#C2D2EC"),
-                        VerticalAlignment = VerticalAlignment.Center,
-                        Margin = new Thickness(12, 0, 6, 0)
-                    });
-                }
                 panel.Children.Add(steppers[i]);
+                panel.Children.Add(new TextBlock
+                {
+                    Text = labels[i],
+                    FontSize = 12,
+                    Foreground = TimeStepper.Brush("#C2D2EC"),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(6, 0, 0, 0)
+                });
             }
-            panel.Children.Insert(0, new TextBlock
-            {
-                Text = labels[0],
-                FontSize = 12,
-                Foreground = TimeStepper.Brush("#C2D2EC"),
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 6, 0)
-            });
         }
 
         private static string Fmt(TimeSpan t)
