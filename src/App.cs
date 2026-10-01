@@ -1,13 +1,15 @@
 ﻿// ============================================================
-//  QUANTUM SHUTDOWN · 智能关机控制台 v2.1.1
+//  QUANTUM SHUTDOWN · 智能关机控制台 v2.2
 //  纯 C# WPF 单文件实现，csc.exe 直接编译为独立 exe
-//  功能：倒计时关机 / 定时关机 / 一键取消（shutdown /a）
+//  功能：倒计时关机 / 定时关机 / 条件关机（断电·断网）/ 托盘常驻 / 一键取消（shutdown /a）
 //  自测：智能关机控制台.exe --selftest  /  --shots（附截图）
 // ============================================================
 using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net.NetworkInformation;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -19,6 +21,8 @@ using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using SD = System.Drawing;
+using WF = System.Windows.Forms;
 
 namespace QuantumShutdown
 {
@@ -191,6 +195,34 @@ namespace QuantumShutdown
               </Trigger>
               <Trigger Property=""IsEnabled"" Value=""False"">
                 <Setter TargetName=""bd"" Property=""Opacity"" Value=""0.35""/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key=""SelBtn"" TargetType=""RadioButton"">
+      <Setter Property=""Foreground"" Value=""#CBD9F2""/>
+      <Setter Property=""FontSize"" Value=""12""/>
+      <Setter Property=""Margin"" Value=""0,0,8,8""/>
+      <Setter Property=""Cursor"" Value=""Hand""/>
+      <Setter Property=""Template"">
+        <Setter.Value>
+          <ControlTemplate TargetType=""RadioButton"">
+            <Border x:Name=""bd"" CornerRadius=""8"" Background=""#0C1729"" BorderBrush=""#24406E"" BorderThickness=""1"" Padding=""14,6"">
+              <ContentPresenter HorizontalAlignment=""Center"" VerticalAlignment=""Center""/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property=""IsMouseOver"" Value=""True"">
+                <Setter TargetName=""bd"" Property=""BorderBrush"" Value=""#2BE4FF""/>
+                <Setter TargetName=""bd"" Property=""Background"" Value=""#12233F""/>
+                <Setter Property=""Foreground"" Value=""#2BE4FF""/>
+              </Trigger>
+              <Trigger Property=""IsChecked"" Value=""True"">
+                <Setter TargetName=""bd"" Property=""BorderBrush"" Value=""#2BE4FF""/>
+                <Setter TargetName=""bd"" Property=""Background"" Value=""#12233F""/>
+                <Setter Property=""Foreground"" Value=""#2BE4FF""/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -372,7 +404,7 @@ namespace QuantumShutdown
                          Foreground=""#AFC8EA"" VerticalAlignment=""Center""/>
               <Border Margin=""10,0,0,0"" CornerRadius=""4"" Background=""#0D1B33"" BorderBrush=""#24406E""
                       BorderThickness=""1"" Padding=""7,1"" VerticalAlignment=""Center"">
-                <TextBlock Text=""v2.1.1"" FontSize=""9.5"" Foreground=""#C2D2EC""/>
+                <TextBlock Text=""v2.2"" FontSize=""9.5"" Foreground=""#C2D2EC""/>
               </Border>
             </StackPanel>
           </DockPanel>
@@ -417,6 +449,7 @@ namespace QuantumShutdown
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width=""*""/>
                 <ColumnDefinition Width=""*""/>
+                <ColumnDefinition Width=""*""/>
               </Grid.ColumnDefinitions>
               <RadioButton x:Name=""TabCnt"" Style=""{StaticResource TabBtn}"" IsChecked=""True"">
                 <StackPanel Orientation=""Horizontal"">
@@ -430,6 +463,13 @@ namespace QuantumShutdown
                   <TextBlock Text=""&#xE823;"" FontFamily=""Segoe MDL2 Assets"" FontSize=""13""
                              VerticalAlignment=""Center"" Margin=""0,0,8,0""/>
                   <TextBlock Text=""定时关机"" VerticalAlignment=""Center""/>
+                </StackPanel>
+              </RadioButton>
+              <RadioButton Grid.Column=""2"" x:Name=""TabCond"" Style=""{StaticResource TabBtn}"">
+                <StackPanel Orientation=""Horizontal"">
+                  <TextBlock Text=""&#xE945;"" FontFamily=""Segoe MDL2 Assets"" FontSize=""13""
+                             VerticalAlignment=""Center"" Margin=""0,0,8,0""/>
+                  <TextBlock Text=""条件关机"" VerticalAlignment=""Center""/>
                 </StackPanel>
               </RadioButton>
             </Grid>
@@ -538,6 +578,31 @@ namespace QuantumShutdown
                   </Button>
                   <Button x:Name=""BtnSchedCancel"" Style=""{StaticResource GhostBtn}"" Margin=""0,10,0,0""
                           IsEnabled=""False"" Content=""取消关机计划（shutdown /a）""/>
+                </StackPanel>
+
+                <!-- 条件面板 -->
+                <StackPanel x:Name=""PanelCond"" Visibility=""Collapsed"">
+                  <TextBlock Style=""{StaticResource Lbl}"" Text=""触 发 条 件 · TRIGGER""/>
+                  <WrapPanel>
+                    <RadioButton x:Name=""CondPower"" Style=""{StaticResource SelBtn}"" Content=""断开电源""/>
+                    <RadioButton x:Name=""CondLink"" Style=""{StaticResource SelBtn}"" Content=""网络断开""/>
+                    <RadioButton x:Name=""CondNet"" Style=""{StaticResource SelBtn}"" Content=""外网不通""/>
+                  </WrapPanel>
+                  <TextBlock Style=""{StaticResource Lbl}"" Margin=""0,10,0,8"" Text=""宽 限 时 长 · 持续满足后才关机""/>
+                  <StackPanel x:Name=""CondSteps"" Orientation=""Horizontal""/>
+                  <TextBlock x:Name=""CondInfo"" Margin=""0,8,0,0"" MinHeight=""16"" FontSize=""11""
+                             Foreground=""#74D9FF"" TextWrapping=""Wrap"" Text="""" LineHeight=""15""/>
+                  <TextBlock x:Name=""ErrCond"" MinHeight=""16"" FontSize=""11""
+                             Foreground=""#FF7A90"" TextWrapping=""Wrap"" Text="""" LineHeight=""15""/>
+                  <Button x:Name=""BtnCondStart"" Style=""{StaticResource PrimaryBtn}"" Margin=""0,4,0,0"">
+                    <StackPanel Orientation=""Horizontal"">
+                      <TextBlock Text=""&#xE7E8;"" FontFamily=""Segoe MDL2 Assets"" FontSize=""15""
+                                 VerticalAlignment=""Center"" Margin=""0,0,9,0""/>
+                      <TextBlock Text=""启动条件监听"" VerticalAlignment=""Center""/>
+                    </StackPanel>
+                  </Button>
+                  <Button x:Name=""BtnCondStop"" Style=""{StaticResource GhostBtn}"" Margin=""0,10,0,0""
+                          IsEnabled=""False"" Content=""停止监听""/>
                 </StackPanel>
               </Grid>
             </Grid>
@@ -739,12 +804,14 @@ namespace QuantumShutdown
         private readonly Window _win;
         private bool _selfTest;
 
-        private TimeStepper _cntH, _cntM, _cntS, _schH, _schM;
+        private TimeStepper _cntH, _cntM, _cntS, _schH, _schM, _graceStep;
 
-        private RadioButton _tabCnt, _tabSched;
-        private StackPanel _panelCnt, _panelSched;
+        private RadioButton _tabCnt, _tabSched, _tabCond, _condPower, _condLink, _condNet;
+        private StackPanel _panelCnt, _panelSched, _panelCond;
         private Button _btnCntStart, _btnSchedStart, _btnCntCancel, _btnSchedCancel, _btnAbort, _btnMin, _btnClose;
+        private Button _btnCondStart, _btnCondStop;
         private TextBlock _ringTime, _ringMode, _ledText, _planLine, _clockText, _schedInfo, _errCnt, _errSched;
+        private TextBlock _condInfo, _errCond;
         private Ellipse _ledDot;
         private System.Windows.Shapes.Path _arc;
         private Canvas _ticks;
@@ -757,12 +824,25 @@ namespace QuantumShutdown
         private TimeSpan _total;
         private DateTime _target;
 
+        // 条件监听（断电 / 断网）
+        private bool _listening;
+        private string _condType = "power";
+        private DateTime? _condSince;
+        private TimeSpan _graceTotal = TimeSpan.FromMinutes(5);
+        private bool _hasBattery;
+        private bool _netOk = true;
+        private bool _probing;
+        private int _probeCount;
+        private WF.NotifyIcon _tray;
+        private bool _exiting;
+
         public Controller(Window win)
         {
             _win = win;
             _selfTest = false;
 
             _tabCnt = Find<RadioButton>("TabCnt"); _tabSched = Find<RadioButton>("TabSched");
+            _tabCond = Find<RadioButton>("TabCond");
             _panelCnt = Find<StackPanel>("PanelCnt"); _panelSched = Find<StackPanel>("PanelSched");
             _btnCntStart = Find<Button>("BtnCntStart"); _btnSchedStart = Find<Button>("BtnSchedStart");
             _btnCntCancel = Find<Button>("BtnCntCancel"); _btnSchedCancel = Find<Button>("BtnSchedCancel");
@@ -773,11 +853,17 @@ namespace QuantumShutdown
             _errCnt = Find<TextBlock>("ErrCnt"); _errSched = Find<TextBlock>("ErrSched");
             _ledDot = Find<Ellipse>("LedDot"); _arc = Find<System.Windows.Shapes.Path>("ArcProgress");
             _ticks = Find<Canvas>("TicksCanvas");
+            _panelCond = Find<StackPanel>("PanelCond");
+            _condPower = Find<RadioButton>("CondPower"); _condLink = Find<RadioButton>("CondLink");
+            _condNet = Find<RadioButton>("CondNet");
+            _condInfo = Find<TextBlock>("CondInfo"); _errCond = Find<TextBlock>("ErrCond");
+            _btnCondStart = Find<Button>("BtnCondStart"); _btnCondStop = Find<Button>("BtnCondStop");
             var titleBar = Find<Border>("TitleBar");
             var chipCnt = Find<WrapPanel>("ChipPanelCnt");
             var chipSched = Find<WrapPanel>("ChipPanelSched");
             var cntSteps = Find<StackPanel>("CntSteps");
             var schedSteps = Find<StackPanel>("SchedSteps");
+            var condSteps = Find<StackPanel>("CondSteps");
 
             Style boxStyle = (Style)_win.FindResource("StepBox");
 
@@ -809,6 +895,20 @@ namespace QuantumShutdown
             _schH.Changed += UpdateSchedPreview;
             _schM.Changed += UpdateSchedPreview;
 
+            // ---- 条件关机：宽限时长 + 触发条件 ----
+            _hasBattery = HasBattery();
+            _graceStep = new TimeStepper(boxStyle, 64, 38, 120);
+            _graceStep.SetValue(5);
+            AddCountdownRow(condSteps, new[] { _graceStep }, new[] { "分钟" });
+            _condPower.Checked += (s, e) => { _condType = "power"; UpdateCondInfo(); };
+            _condLink.Checked += (s, e) => { _condType = "link"; UpdateCondInfo(); };
+            _condNet.Checked += (s, e) => { _condType = "net"; UpdateCondInfo(); };
+            if (!_hasBattery) _condPower.IsEnabled = false;
+            (_hasBattery ? _condPower : _condLink).IsChecked = true;
+            _btnCondStart.Click += (s, e) => StartListener();
+            _btnCondStop.Click += (s, e) => StopCondButton();
+            UpdateCondInfo();
+
             // ---- 刻度环 ----
             for (int i = 0; i < 60; i++)
             {
@@ -830,8 +930,9 @@ namespace QuantumShutdown
             _btnClose.Click += (s, e) => _win.Close();
             _btnMin.Click += (s, e) => _win.WindowState = WindowState.Minimized;
 
-            _tabCnt.Checked += (s, e) => { _panelCnt.Visibility = Visibility.Visible; _panelSched.Visibility = Visibility.Collapsed; };
-            _tabSched.Checked += (s, e) => { _panelSched.Visibility = Visibility.Visible; _panelCnt.Visibility = Visibility.Collapsed; UpdateSchedPreview(); };
+            _tabCnt.Checked += (s, e) => { _panelCnt.Visibility = Visibility.Visible; _panelSched.Visibility = Visibility.Collapsed; _panelCond.Visibility = Visibility.Collapsed; };
+            _tabSched.Checked += (s, e) => { _panelSched.Visibility = Visibility.Visible; _panelCnt.Visibility = Visibility.Collapsed; _panelCond.Visibility = Visibility.Collapsed; UpdateSchedPreview(); };
+            _tabCond.Checked += (s, e) => { _panelCond.Visibility = Visibility.Visible; _panelCnt.Visibility = Visibility.Collapsed; _panelSched.Visibility = Visibility.Collapsed; };
 
             foreach (var o in chipCnt.Children)
             {
@@ -871,6 +972,19 @@ namespace QuantumShutdown
 
             _win.Closing += (s, e) =>
             {
+                if (_listening && !_exiting)
+                {
+                    // 条件监听进行中：关窗 = 驻留托盘，监听继续
+                    e.Cancel = true;
+                    _win.Visibility = Visibility.Hidden;
+                    try
+                    {
+                        _tray.ShowBalloonTip(2500, "已最小化到托盘",
+                            "断电/断网监听继续运行；双击托盘图标可打开主界面。", WF.ToolTipIcon.Info);
+                    }
+                    catch { }
+                    return;
+                }
                 if (!_armed) return;
                 string msg = string.Format(
                     "关机计划仍在进行：{0}\n\n「是」 — 取消关机计划并退出\n「否」 — 保留关机计划并退出\n「取消」 — 返回程序",
@@ -879,9 +993,22 @@ namespace QuantumShutdown
                 if (r == MessageBoxResult.Yes) StopPlan("silent");
                 else if (r == MessageBoxResult.Cancel) e.Cancel = true;
             };
+            _win.Closed += (s, e) => DisposeTray();
 
             _timer.Tick += (s, e) => UpdateTick();
             _timer.Start();
+
+            InitTray();
+            try
+            {
+                using (var ic = SD.Icon.ExtractAssociatedIcon(Process.GetCurrentProcess().MainModule.FileName))
+                {
+                    _win.Icon = System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(
+                        ic.Handle, Int32Rect.Empty,
+                        System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
+                }
+            }
+            catch { }
 
             ResetUi();
             UpdateSchedPreview();
@@ -949,13 +1076,19 @@ namespace QuantumShutdown
 
         private void ClearErrs()
         {
-            _errCnt.Text = ""; _errSched.Text = "";
+            _errCnt.Text = ""; _errSched.Text = ""; _errCond.Text = "";
         }
 
         private void InvokeShutdown(int seconds, bool scheduled)
         {
+            InvokeShutdown(seconds, scheduled
+                ? "系统已在计划时刻到达，即将自动关机"
+                : "倒计时结束，系统即将自动关机");
+        }
+
+        private void InvokeShutdown(int seconds, string comment)
+        {
             if (_selfTest) return;
-            string comment = scheduled ? "系统已在计划时刻到达，即将自动关机" : "倒计时结束，系统即将自动关机";
             Process.Start(new ProcessStartInfo("shutdown.exe", "/s /t " + seconds + " /c " + comment)
             {
                 CreateNoWindow = true,
@@ -981,8 +1114,13 @@ namespace QuantumShutdown
         {
             _armed = false;
             _total = TimeSpan.Zero;
+            _listening = false;
+            _condSince = null;
             _btnCntStart.IsEnabled = true;
             _btnSchedStart.IsEnabled = true;
+            _btnCondStart.IsEnabled = true;
+            _btnCondStop.IsEnabled = false;
+            _btnCondStop.Content = "停止监听";
             _btnCntCancel.IsEnabled = false;
             _btnSchedCancel.IsEnabled = false;
             _btnAbort.IsEnabled = false;
@@ -1065,6 +1203,7 @@ namespace QuantumShutdown
         {
             DateTime now = DateTime.Now;
             _clockText.Text = now.ToString("yyyy-MM-dd  HH:mm:ss");
+            if (_listening) { ListenTick(now); return; }
             if (!_armed) return;
 
             _blink = !_blink;
@@ -1090,6 +1229,313 @@ namespace QuantumShutdown
                     _schedInfo.Text = string.Format("目标 {0} · 剩余 {1}",
                         _target.ToString("yyyy-MM-dd HH:mm"), Fmt(rem));
             }
+        }
+
+        // ======================= 电源 / 网络 检测 =======================
+        [StructLayout(LayoutKind.Sequential)]
+        private struct SYSTEM_POWER_STATUS
+        {
+            public byte ACLineStatus;
+            public byte BatteryFlag;
+            public byte BatteryLifePercent;
+            public byte Reserved1;
+            public int BatteryLifeTime;
+            public int BatteryFullLifeTime;
+        }
+
+        [DllImport("kernel32.dll")]
+        private static extern bool GetSystemPowerStatus(out SYSTEM_POWER_STATUS status);
+
+        private bool IsOnBattery()
+        {
+            try
+            {
+                SYSTEM_POWER_STATUS s;
+                if (!GetSystemPowerStatus(out s)) return false;
+                return s.ACLineStatus == 0; // 0 = 使用电池
+            }
+            catch { return false; } // 检测异常一律按「条件未满足」处理，绝不误关机
+        }
+
+        private bool HasBattery()
+        {
+            try
+            {
+                SYSTEM_POWER_STATUS s;
+                if (!GetSystemPowerStatus(out s)) return false;
+                return (s.BatteryFlag & 128) == 0; // 128 = 系统无电池
+            }
+            catch { return false; }
+        }
+
+        private bool IsLinkUpSafe()
+        {
+            try
+            {
+                return NetworkInterface.GetAllNetworkInterfaces().Any(n =>
+                    n.OperationalStatus == OperationalStatus.Up &&
+                    n.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
+                    n.NetworkInterfaceType != NetworkInterfaceType.Tunnel);
+            }
+            catch { return true; } // 检测异常一律按「网络正常」处理
+        }
+
+        private void ProbeNet()
+        {
+            if (_probing) return;
+            try
+            {
+                _probing = true;
+                var p = new Ping();
+                p.PingCompleted += (s, e) =>
+                {
+                    _netOk = e.Error == null && e.Reply != null && e.Reply.Status == IPStatus.Success;
+                    _probing = false;
+                };
+                p.SendAsync("223.5.5.5", 3000, null);
+            }
+            catch { _probing = false; _netOk = false; }
+        }
+
+        private bool EvaluateCondition()
+        {
+            if (_condType == "power") return IsOnBattery();
+            if (_condType == "link") return !IsLinkUpSafe();
+            if (_condType == "net") return !_netOk;
+            return false;
+        }
+
+        private string CondDesc()
+        {
+            if (_condType == "power") return "断开电源";
+            if (_condType == "link") return "网络断开";
+            if (_condType == "net") return "外网不通";
+            return "条件满足";
+        }
+
+        private string CondStateText()
+        {
+            if (_condType == "power") return IsOnBattery() ? "已使用电池" : "电源正常";
+            if (_condType == "link") return IsLinkUpSafe() ? "网络正常" : "网络已断开";
+            return _netOk ? "外网正常" : "外网探测失败";
+        }
+
+        private void UpdateCondInfo()
+        {
+            if (_condType == "power")
+                _condInfo.Text = _hasBattery
+                    ? "监测电源状态；拔电并持续达到宽限时长后关机"
+                    : "当前设备未检测到电池，断电关机不可用";
+            else if (_condType == "link")
+                _condInfo.Text = "监测本地网络连接；所有网络断开并持续达到宽限时长后关机";
+            else
+                _condInfo.Text = "每 10 秒探测一次外网（Ping 公共 DNS）；持续不通达到宽限时长后关机";
+        }
+
+        // ======================= 条件监听 =======================
+        private void StartListener()
+        {
+            ClearErrs();
+            if (_listening || _armed) return;
+            if (_condType == "power" && !_hasBattery)
+            {
+                _errCond.Text = "当前设备未检测到电池，无法使用断电关机";
+                return;
+            }
+            if (_condType == "net")
+            {
+                // 启动前先同步探测一次：若网络环境禁 Ping，外网监测会永远「不满足」，直接拒绝
+                try
+                {
+                    var p = new Ping();
+                    var rep = p.Send("223.5.5.5", 2500);
+                    if (rep == null || rep.Status != IPStatus.Success)
+                    {
+                        _errCond.Text = "外网探测失败（Ping 公共 DNS 无响应）：当前网络可能禁止 Ping，外网监测不可用";
+                        return;
+                    }
+                    _netOk = true;
+                }
+                catch
+                {
+                    _errCond.Text = "外网探测失败：当前网络环境无法使用外网监测";
+                    return;
+                }
+            }
+            _listening = true;
+            _condSince = null;
+            _graceTotal = TimeSpan.FromMinutes(_graceStep.Value);
+            _probeCount = 0;
+            _btnCntStart.IsEnabled = false;
+            _btnSchedStart.IsEnabled = false;
+            _btnCondStart.IsEnabled = false;
+            _btnCondStop.IsEnabled = true;
+            _btnCntCancel.IsEnabled = false;
+            _btnSchedCancel.IsEnabled = false;
+            _btnAbort.IsEnabled = false;
+            _ledDot.Fill = TimeStepper.Brush("#2BE4FF");
+            ((DropShadowEffect)_ledDot.Effect).Color = Color.FromRgb(0x2B, 0xE4, 0xFF);
+            _ledDot.Opacity = 1;
+            _ledText.Foreground = TimeStepper.Brush("#CFE6FF");
+            _ringMode.Text = "监听 MONITOR";
+            _ringTime.Text = "--:--:--";
+            SetArc(0);
+            _planLine.Text = "条件监听已启动：" + CondDesc() + "，持续 " + (int)_graceTotal.TotalMinutes +
+                             " 分钟后才会关机；期间可随时停止。";
+            UpdateTick();
+        }
+
+        private void ListenTick(DateTime now)
+        {
+            bool met = EvaluateCondition();
+            if (met) { if (_condSince == null) _condSince = now; }
+            else _condSince = null;
+
+            _blink = !_blink;
+            _ledDot.Opacity = met && _blink ? 0.35 : 1;
+
+            if (_condSince != null)
+            {
+                TimeSpan rem = _graceTotal - (now - _condSince.Value);
+                if (rem <= TimeSpan.Zero) { FireConditionalShutdown(); return; }
+                SetArc(rem.TotalSeconds / _graceTotal.TotalSeconds);
+                _ringTime.Text = Fmt(rem);
+                _ledText.Text = "监听中：" + CondDesc() + " 已持续 · " + Fmt(rem) + " 后关机";
+                _ledText.Foreground = TimeStepper.Brush("#FFB454");
+                _planLine.Text = "条件已持续满足，宽限剩余 " + Fmt(rem) + "；条件恢复将自动复位重新计时。";
+            }
+            else
+            {
+                SetArc(0);
+                _ringTime.Text = "--:--:--";
+                _ledText.Text = "监听中：" + CondStateText() + " · 宽限 " + (int)_graceTotal.TotalMinutes + " 分钟";
+                _ledText.Foreground = TimeStepper.Brush("#CFE6FF");
+                _planLine.Text = "条件监听进行中（" + CondDesc() + "）；持续满足 " +
+                                 (int)_graceTotal.TotalMinutes + " 分钟后才会关机，可随时停止。";
+            }
+            if (_condType == "net" && now.Second % 10 == 0) ProbeNet();
+        }
+
+        private void FireConditionalShutdown()
+        {
+            _listening = false;
+            _condSince = null;
+            DateTime now = DateTime.Now;
+            _total = TimeSpan.FromSeconds(60);
+            _target = now.AddSeconds(60);
+            try { InvokeShutdown(60, "条件触发：" + CondDesc() + "，系统即将自动关机"); }
+            catch (Exception ex)
+            {
+                ResetUi();
+                _planLine.Text = "无法提交系统关机指令：" + ex.Message;
+                return;
+            }
+            _armed = true;
+            _modeScheduled = false;
+            _blink = false;
+            _btnCntStart.IsEnabled = false;
+            _btnSchedStart.IsEnabled = false;
+            _btnCondStart.IsEnabled = false;
+            _btnCntCancel.IsEnabled = true;
+            _btnSchedCancel.IsEnabled = true;
+            _btnCondStop.IsEnabled = true;
+            _btnCondStop.Content = "取消关机计划（shutdown /a）";
+            _btnAbort.IsEnabled = true;
+            _ledDot.Fill = TimeStepper.Brush("#2BE4FF");
+            ((DropShadowEffect)_ledDot.Effect).Color = Color.FromRgb(0x2B, 0xE4, 0xFF);
+            _ledText.Foreground = TimeStepper.Brush("#CFE6FF");
+            _ringMode.Text = "条件触发 PENDING";
+            _planLine.Text = "条件已满足（" + CondDesc() + "），60 秒后关机；点击「取消关机计划」可撤销。";
+            UpdateTick();
+        }
+
+        private void StopCondButton()
+        {
+            if (_armed) { StopPlan("manual"); return; }
+            if (_listening)
+            {
+                _listening = false;
+                _condSince = null;
+                ResetUi();
+                _ledDot.Fill = TimeStepper.Brush("#FFB454");
+                ((DropShadowEffect)_ledDot.Effect).Color = Color.FromRgb(0xFF, 0xB4, 0x54);
+                _ledText.Text = "已停止监听 · STOPPED";
+                _ledText.Foreground = TimeStepper.Brush("#FFB454");
+                _planLine.Text = "条件监听已停止，未向系统提交任何关机指令。";
+            }
+        }
+
+        // ======================= 托盘常驻 =======================
+        private void InitTray()
+        {
+            try
+            {
+                SD.Icon icon = null;
+                try
+                {
+                    icon = SD.Icon.ExtractAssociatedIcon(Process.GetCurrentProcess().MainModule.FileName);
+                }
+                catch { }
+                if (icon == null) icon = MakeFallbackIcon();
+                _tray = new WF.NotifyIcon { Icon = icon, Text = "智能关机控制台", Visible = true };
+                var menu = new WF.ContextMenuStrip();
+                menu.Items.Add("显示主界面", null, (s, e) => ShowFromTray());
+                menu.Items.Add("取消关机计划", null, (s, e) =>
+                {
+                    if (_armed) { StopPlan("manual"); return; }
+                    try
+                    {
+                        _tray.ShowBalloonTip(2000, "当前没有待执行的关机计划",
+                            "条件监听不受影响，继续运行中。", WF.ToolTipIcon.Info);
+                    }
+                    catch { }
+                });
+                menu.Items.Add("退出", null, (s, e) => ExitFromTray());
+                _tray.ContextMenuStrip = menu;
+                _tray.DoubleClick += (s, e) => ShowFromTray();
+            }
+            catch { }
+        }
+
+        private SD.Icon MakeFallbackIcon()
+        {
+            using (var bmp = new SD.Bitmap(32, 32))
+            using (var g = SD.Graphics.FromImage(bmp))
+            {
+                g.SmoothingMode = SD.Drawing2D.SmoothingMode.AntiAlias;
+                g.Clear(SD.Color.Transparent);
+                using (var pen = new SD.Pen(SD.Color.FromArgb(255, 43, 228, 255), 3))
+                {
+                    g.DrawArc(pen, 7, 7, 18, 18, -55, 290);
+                    g.DrawLine(pen, 16, 3, 16, 13);
+                }
+                return SD.Icon.FromHandle(bmp.GetHicon());
+            }
+        }
+
+        private void ShowFromTray()
+        {
+            _win.Visibility = Visibility.Visible;
+            _win.WindowState = WindowState.Normal;
+            _win.Activate();
+        }
+
+        private void ExitFromTray()
+        {
+            if (_listening)
+            {
+                var r = MessageBox.Show(_win,
+                    "断电/断网监听正在进行中。\n\n退出程序将停止监听（不会取消已提交的系统关机计划）。\n\n确定退出吗？",
+                    "退出确认", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (r != MessageBoxResult.Yes) return;
+            }
+            _exiting = true;
+            _win.Close();
+        }
+
+        private void DisposeTray()
+        {
+            try { if (_tray != null) { _tray.Visible = false; _tray.Dispose(); } } catch { }
         }
 
         // ======================= 自测与截图 =======================
@@ -1130,6 +1576,21 @@ namespace QuantumShutdown
                 check("定时总时长 ≤ 86400 秒", _total.TotalSeconds <= 86401);
                 check("剩余时间显示已更新（" + _ringTime.Text + "）", _ringTime.Text.Length >= 8);
 
+                StopPlan("silent");
+
+                // 条件关机：触发路径（selftest 模式不会真正调用 shutdown）
+                _listening = true;
+                _condType = "power";
+                _graceTotal = TimeSpan.FromMinutes(5);
+                _condSince = DateTime.Now.AddMinutes(-6);
+                FireConditionalShutdown();
+                check("条件触发后进入 60 秒可取消关机（实际 " + _total.TotalSeconds + " 秒）",
+                      _armed && !_listening && Math.Abs(_total.TotalSeconds - 60) < 1);
+                check("条件触发目标时刻在未来", _target > DateTime.Now);
+                StopPlan("silent");
+                check("停止后监听与关机状态完全复位", !_armed && !_listening);
+                sb.AppendLine("[INFO] 电池存在: " + _hasBattery + " · 本地链路: " + (IsLinkUpSafe() ? "正常" : "断开"));
+
                 SetArc(0.25); check("圆弧 25% 渲染", _arc.Data != null);
                 SetArc(1.0); check("圆弧满环渲染", _arc.Data != null);
                 SetArc(0); check("圆弧归零收起", _arc.Visibility == Visibility.Collapsed);
@@ -1149,6 +1610,7 @@ namespace QuantumShutdown
             sb.AppendLine(fails == 0 ? "RESULT: ALL PASS" : "RESULT: " + fails + " FAILED");
             string path = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "selftest_result.txt");
             File.WriteAllText(path, sb.ToString(), new UTF8Encoding(true));
+            DisposeTray();
             try { if (_win.IsLoaded) { StopPlan("silent"); _win.Close(); } } catch { }
             Environment.Exit(fails == 0 ? 0 : 2);
         }
@@ -1182,6 +1644,10 @@ namespace QuantumShutdown
             _schH.SetValue(23); _schM.SetValue(30);
             StartPlan(true); UpdateTick();
             Snap(System.IO.Path.Combine(dir, "_shot4_armed_sched.png"));
+
+            StopPlan("silent");
+            _tabCond.IsChecked = true; UpdateCondInfo();
+            Snap(System.IO.Path.Combine(dir, "_shot5_idle_cond.png"));
 
             StopPlan("silent");
         }

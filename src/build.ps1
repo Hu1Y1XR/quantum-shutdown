@@ -53,6 +53,8 @@ if (Test-Path $out) { Remove-Item $out -Force }
     /r:"$fw\System.Xaml.dll" `
     /r:"$fw\System.dll" `
     /r:"$fw\System.Core.dll" `
+    /r:"$fw\System.Windows.Forms.dll" `
+    /r:"$fw\System.Drawing.dll" `
     "$cs"
 if ($LASTEXITCODE -ne 0) { throw "编译失败，退出码 $LASTEXITCODE" }
 
